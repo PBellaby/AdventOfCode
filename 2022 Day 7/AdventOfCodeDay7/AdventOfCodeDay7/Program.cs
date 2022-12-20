@@ -17,22 +17,35 @@ public class FileSystemItem
 
     public override string ToString()
     {
-        string output = $"{filepath}{name}\n\t";
+        string output = $"{filepath}{name} - {size}\n";
         foreach(var content in contents)
         {
-            output += content.ToString();
+            output += "|_" + content.ToString();
         }
         return output;
     }
 
-    public bool Exists (string name)
+    public void PrintSize()
     {
-        if (name == this.name) return true;
+        Console.WriteLine($"{filepath}{name} = {size}");
         foreach(var content in contents)
         {
-            if (content.Exists(name)) return true;
+            content.PrintSize();
         }
-        return false;
+    }
+
+    public FileSystemItem Find(string fp)
+    {
+        if (fp == filepath + name + "/") return this;
+
+        FileSystemItem target = this;
+
+        foreach(var content in contents)
+        {
+            target = content.Find(fp);
+        }
+
+        return target;
     }
 }
 
@@ -45,10 +58,12 @@ public class Program
         // measure the size of directories by all the files contained within (inc. contained directories)
         // sum up the sizes of all directories that are at most 100_000 in size
 
-        string curDir = @"/";
-        string prevDir = curDir;
+        string curDir = @"";
+        Stack<string> prevDirs = new();
+        prevDirs.Push(curDir);
 
-        FileSystemItem fs = new(curDir, "");
+        //fp of nothing as root, name is just "/"
+        FileSystemItem fs = new("", "/");
 
         Console.WriteLine(fs);
 
@@ -56,21 +71,25 @@ public class Program
         foreach(var line in data)
         {
             //change directory
-            if(line.Contains("$ cd"))
+            if (line.Contains("$ cd"))
             {
                 string newDir = line.Remove(0, 5);
-                //swap prev and current directory if "$ cd .."
-                if (newDir == "..") (prevDir, curDir) = (curDir, prevDir);
+                //pop prev directory if "$ cd .."
+                if (newDir == "..") curDir = prevDirs.Pop();
                 else if (newDir == "/")
                 {
-                    prevDir = curDir;
+                    prevDirs.Clear();
                     curDir = "/";
                 }
-                else curDir = curDir + "/" + newDir;
+                // FLAG the below is suspect >:(
+                else {
+                    prevDirs.Push(curDir);
+                    curDir = curDir + newDir + "/"; 
+                }
             }
             // "$ ls" can be ignored, file does this for us essentially
-
-            else if(line.ToLower().StartsWith("dir"))
+            else if (line.Contains("$ ls"));
+            else if (line.ToLower().StartsWith("dir"))
             {
                 //add directory to filesystem
                 string name = line.Remove(0, 4);
@@ -78,15 +97,44 @@ public class Program
                 newDir.isDir = true;
 
                 //find current directory using curDir string, add new item to that particular FileSystemItem
-                // TODO
+                FileSystemItem curFSI = fs.Find(curDir);
+                curFSI.contents.Add(newDir);
             }
 
             else
             {
                 //add new file to fs
+                int size = int.Parse(line.Split(" ")[0]);
+                string name = line.Split(" ")[1];
 
-                // TODO
+                FileSystemItem curFSI = fs.Find(curDir);
+                FileSystemItem newFile = new(curDir, name);
+                curFSI.contents.Add(newFile);
+                newFile.size = size;
+                curFSI.size += size;
             }
         }
+
+        Console.WriteLine(fs);
+
+        //count the sizes of all directories that are at or below 100_000 in size
+        int sum = CountSizes(fs);
+        Console.WriteLine($"Sum {sum}");
+    }
+
+    private static int CountSizes(FileSystemItem fileSystemItem)
+    {
+        // >= 100_000
+
+        int sum = 0;
+
+        if (fileSystemItem.isDir && fileSystemItem.size <= 100000) sum += fileSystemItem.size;
+
+        if(fileSystemItem.contents.Count > 0)
+        {
+            foreach (var item in fileSystemItem.contents) sum += CountSizes(item);
+        }
+
+        return sum;
     }
 }
